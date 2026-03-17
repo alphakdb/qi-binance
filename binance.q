@@ -2,8 +2,6 @@
 .qi.frompkg[`binance;`norm]
 .qi.frompkg[`proc;`feed]
 
-\d .binance
-
 tickers:"/"sv("," vs .conf.BINANCE_TICKERS),\:.conf.BINANCE_DATA
 path:"/stream?streams=",tickers;
 header:"GET ",path," HTTP/1.1\r\nHost: stream.binance.com\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n";
@@ -19,5 +17,3 @@ msg.data:{[k] .feed.upd[TD k`x;norm.kline k]}
     }
 
 start::{.feed.start[header;URL]}
-
-\d .
