@@ -42,6 +42,6 @@
 .binance.backfill:{[syms;start;end;interval;hdbpath]
   p:.qi.path hdbpath;
   .binance.backfillsym[;start;end;interval;p] each syms;
-  {t:.qi.path(x;y;`BinanceKline1m);`sym xasc p;@[t;`sym;`p#]}[p;]each key[p] where key[p] like"[0-9]*";
+  {t:.qi.path(x;y;`BinanceKline1m);`sym xasc t;@[t;`sym;`p#]}[p;]each key[p] where key[p] like"[0-9]*";
   .qi.info"Backfill complete";
   }
