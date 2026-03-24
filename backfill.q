@@ -23,8 +23,7 @@
 .binance.writepart:{[hdbpath;date;tbl]
   .qi.os.ensuredir .qi.path(hdbpath;`$string date);
   partpath:.qi.path(hdbpath;`$string date;`BinanceKline1m);
-  tbl:.Q.en[hdbpath;update`p#sym from tbl];
-  .[.qi.path(partpath;`);();,;tbl];
+  .[.qi.path(partpath;`);();,;.Q.en[hdbpath;tbl];];
   .qi.info string[date]," ",string[count tbl]," rows";
   }
 
