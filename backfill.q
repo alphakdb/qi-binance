@@ -10,20 +10,27 @@
 
 / Download and parse one monthly zip, returns table
 .binance.fetchmonth:{[sym;interval;ym]
-  fname:(sv["-";(string sym;string interval;string`int$`year$ym;-2#"0",string`mm$ym)]),".zip";
+  fname:("-"sv(string sym;string interval;string`int$`year$ym;-2#"0",string`mm$ym)),".zip";
   url:.binance.BASEURL,string[sym],"/",string[interval],"/",fname;
   .qi.info"Fetching ",url;
-  lines:@[{system"curl -sf --max-time 120 \"",x,"\" -o /tmp/binance_bf.zip";
-           system"unzip -p /tmp/binance_bf.zip"};url;   //Windows also needed
-          {.qi.error"Fetch failed: ",x;()}];
-  .binance.parse[sym;lines]
+  tmp:.qi.local`tmp;
+  .qi.os.ensuredir tmp;
+  zip:.qi.path(tmp;`$fname);
+  fp:.qi.path(tmp;`$(-4_fname),".csv");
+  .qi.fetch[url;zip];
+  $[.qi.WIN;
+    system"powershell -NoProfile -Command \"Expand-Archive -Path '",.qi.ospath[zip],"' -DestinationPath '",.qi.ospath[tmp],"' -Force\"";
+    [lines:system"unzip -p ",.qi.spath zip;fp:lines]];
+  data:.binance.parse[sym;fp];
+  $[.qi.WIN;hdel each(zip;fp);hdel zip];
+  data
   }
 
 / Write one day's rows to HDB partition
 .binance.writepart:{[hdbpath;date;tbl]
   .qi.os.ensuredir .qi.path(hdbpath;`$string date);
   partpath:.qi.path(hdbpath;`$string date;`BinanceKline1m);
-  .[.qi.path(partpath;`);();,;.Q.en[hdbpath;tbl];];
+  .[.qi.path(partpath;`);();,;.Q.en[hdbpath;tbl]];
   .qi.info string[date]," ",string[count tbl]," rows";
   }
 
