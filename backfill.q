@@ -22,7 +22,7 @@
     system"powershell -NoProfile -Command \"Expand-Archive -Path '",.qi.ospath[zip],"' -DestinationPath '",.qi.ospath[tmp],"' -Force\"";
     [lines:system"unzip -p ",.qi.spath zip;fp:lines]];
   data:.binance.parse[sym;fp];
-  $[.qi.WIN;hdel each(zip;fp);hdel zip];
+  .qi.deldir tmp;
   data
   }
 
@@ -35,20 +35,22 @@
   }
 
 
-/ Backfill month by month
+/ Backfill month by month, returns dates written
 .binance.backfillsym:{[sym;start;end;interval;hdbpath]
   .qi.info"Backfilling ",string[sym]," ",string[interval]," ",string[start]," to ",string end;
-  {[sym;interval;hdbpath;ym]
+  raze{[sym;interval;hdbpath;ym]
     tbl:.binance.fetchmonth[sym;interval;ym];
-    if[not count tbl;:()];
+    if[not count tbl;:`date$()];
+    dts:distinct(`date$tbl`time)except 0Nd;
     {[hdbpath;tbl;dt].binance.writepart[hdbpath;dt;select from tbl where(`date$time)=dt]
-      }[hdbpath;tbl;] each distinct`date$tbl`time
+      }[hdbpath;tbl;] each dts;
+    dts
     }[sym;interval;hdbpath;] each distinct`month$start+til 1+end-start;
   }
 
 .binance.backfill:{[syms;start;end;interval;hdbpath]
   p:.qi.path hdbpath;
-  .binance.backfillsym[;start;end;interval;p] each syms;
-  {t:.qi.path(x;y;`BinanceKline1m);`sym xasc t;@[t;`sym;`p#]}[p;]each key[p] where key[p] like"[0-9]*";
+  dates:distinct raze .binance.backfillsym[;start;end;interval;p] each syms;
+  {t:.qi.path(x;y;`BinanceKline1m);if[.qi.exists t;`sym xasc t;@[t;`sym;`p#]]}[p;]each key[p] where key[p] like"[0-9]*";
   .qi.info"Backfill complete";
   }

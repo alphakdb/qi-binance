@@ -1,6 +1,8 @@
 .qi.import`ipc;
 .qi.frompkg[`binance;`norm]
 .qi.frompkg[`proc;`feed]
+.qi.frompkg[`binance;`backfill] / .binance.backfill[`BTCUSDT`ETHUSDT;2024.01.10;2024.03.01;`1m;`:/home/iwickham/qihome/hdb]
+
 
 tickers:"/"sv("," vs .conf.BINANCE_TICKERS),\:.conf.BINANCE_DATA
 path:"/stream?streams=",tickers;
