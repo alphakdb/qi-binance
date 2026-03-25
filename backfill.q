@@ -5,7 +5,7 @@
   c:("JFFFFF FJ";",")0:lines;  
   n:count c 0;
   times:1970.01.01D+1000000*c 0;     / ms epoch -> q timestamp
-  flip`time`sym`open`high`low`close`volume`quotevolume`trades`feedtime`tptime!(times;n#sym;c 1;c 2;c 3;c 4;c 5;c 6;c 7;n#.z.p;n#0Np)
+  flip`time`sym`open`high`low`close`vwap`volume`feedtime`tptime!(times;n#sym;c 1;c 2;c 3;c 4;c[6]%c 5;c 5;n#.z.p;n#0Np)
   }
 
 / Download and parse one monthly zip, returns table
