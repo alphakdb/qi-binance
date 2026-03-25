@@ -17,7 +17,7 @@
   .qi.os.ensuredir tmp;
   zip:.qi.path(tmp;`$fname);
   fp:.qi.path(tmp;`$(-4_fname),".csv");
-  .qi.fetch[url;zip];
+  @[system;"curl -L -s --max-time 120 -o ",.qi.ospath[zip]," ",url;{[u;e].qi.error"Failed to fetch ",u,": ",e}[url;]];
   $[.qi.WIN;
     system"powershell -NoProfile -Command \"Expand-Archive -Path '",.qi.ospath[zip],"' -DestinationPath '",.qi.ospath[tmp],"' -Force\"";
     [lines:system"unzip -p ",.qi.spath zip;fp:lines]];
