@@ -1,5 +1,11 @@
 .binance.BASEURL:"https://data.binance.vision/data/spot/monthly/klines/"
 
+.binance.hdb_dir:{
+  $[.qi.isproc;
+    .qi.path(.conf.DATA;.proc.self.stackname;`hdb;.proc.self.options`hdb);
+    .qi.path .conf.BINANCE_HDB] /TODO
+  }
+
 / Parse raw CSV lines into a typed table for one symbol
 .binance.parse:{[sym;lines]
   c:("JFFFFF FJ";",")0:lines;  
@@ -48,9 +54,14 @@
     }[sym;interval;hdbpath;] each distinct`month$start+til 1+end-start;
   }
 
-.binance.backfill:{[syms;start;end;interval;hdbpath]
-  p:.qi.path hdbpath;
+.binance.backfill:{[syms;start;end;interval]
+  p:.binance.hdb_dir[];
   dates:distinct raze .binance.backfillsym[;start;end;interval;p] each syms;
   {t:.qi.path(x;y;`BinanceKline1m);if[.qi.exists t;`sym xasc t;@[t;`sym;`p#]]}[p;]each key[p] where key[p] like"[0-9]*";
+  .Q.chk p;
+  if[.qi.isproc;
+    $[null h:.ipc.conn hdb:.qi.tosym .proc.self.options`hdb;
+      .qi.info"Could not connect to ",string[hdb]," to initiate reload";
+      [.qi.info"Initiating reload on ",string hdb;h"reload[]"]]];
   .qi.info"Backfill complete";
   }
