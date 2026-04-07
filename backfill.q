@@ -8,9 +8,10 @@
 
 / Parse raw CSV lines into a typed table for one symbol
 .binance.parse:{[sym;lines]
-  c:("JFFFFF FJ";",")0:lines;  
+  c:("JFFFFF FJ";",")0:lines;
   n:count c 0;
-  times:1970.01.01D+1000000*c 0;     / ms epoch -> q timestamp
+  ms:$[1000000000000<first c 0;c[0]div 1000;c 0];  / normalise us->ms if needed
+  times:1970.01.01D+1000000*ms;     / ms epoch -> q timestamp
   flip`time`sym`open`high`low`close`vwap`volume`feedtime`tptime!(times;n#sym;c 1;c 2;c 3;c 4;c[6]%c 5;c 5;n#.z.p;n#0Np)
   }
 
@@ -54,8 +55,8 @@
     }[sym;interval;hdbpath;] each distinct`month$start+til 1+end-start;
   }
 
-.binance.backfill:{[syms;start;end;interval]
-  p:.binance.hdb_dir[];
+.binance.backfill:{[syms;start;end;interval;hdbpath]
+  p:.qi.path hdbpath;
   dates:distinct raze .binance.backfillsym[;start;end;interval;p] each syms;
   {t:.qi.path(x;y;`BinanceKline1m);if[.qi.exists t;`sym xasc t;@[t;`sym;`p#]]}[p;]each key[p] where key[p] like"[0-9]*";
   .Q.chk p;
