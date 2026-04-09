@@ -33,6 +33,14 @@
   data
   }
 
+/ Check if sym already exists in a partition date
+.binance.symexists:{[hdbpath;interval;date;sym]
+  p:.qi.path(hdbpath;`$string date;`$"BinanceKline",string interval;`sym);
+  s:.qi.path(hdbpath;`sym);
+  if[not .qi.exists p;:0b];
+  sym in distinct get[s]get[p]
+  }
+
 / Write one day's rows to HDB partition
 .binance.writepart:{[hdbpath;interval;date;tbl]
   tname:`$"BinanceKline",string interval;
@@ -46,14 +54,23 @@
 / Backfill month by month, returns dates written
 .binance.backfillsym:{[sym;start;end;interval;hdbpath]
   .qi.info"Backfilling ",string[sym]," ",string[interval]," ",string[start]," to ",string end;
-  raze{[sym;interval;hdbpath;ym]
+  raze{[sym;interval;hdbpath;start;end;ym]
+    / all dates in this month
+    alldts:("d"$ym)+til("d"$ym+1)-"d"$ym;
+    / skip fetch if sym already present for every date in the full month
+    if[all .binance.symexists[hdbpath;interval;;sym] each alldts;
+      .qi.info"Skipping ",(string sym)," ",(string ym),": already backfilled";
+      :alldts where alldts within(start;end)];
     tbl:.binance.fetchmonth[sym;interval;ym];
     if[not count tbl;:`date$()];
     dts:distinct(`date$tbl`time)except 0Nd;
+    / write all dates from zip where sym is missing (not just [start,end])
+    dts:dts except dts where .binance.symexists[hdbpath;interval;;sym] each dts;
     {[hdbpath;interval;tbl;dt].binance.writepart[hdbpath;interval;dt;select from tbl where(`date$time)=dt]
       }[hdbpath;interval;tbl;] each dts;
-    dts
-    }[sym;interval;hdbpath;] each distinct`month$start+til 1+end-start;
+    / return only dates within requested range
+    dts where dts within(start;end)
+    }[sym;interval;hdbpath;start;end;] each distinct`month$start+til 1+end-start;
   }
 
 .binance.backfill:{[syms;start;end;interval;hdbpath]
