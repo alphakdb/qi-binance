@@ -34,9 +34,10 @@
   }
 
 / Write one day's rows to HDB partition
-.binance.writepart:{[hdbpath;date;tbl]
+.binance.writepart:{[hdbpath;interval;date;tbl]
+  tname:`$"BinanceKline",string interval;
   .qi.os.ensuredir .qi.path(hdbpath;`$string date);
-  partpath:.qi.path(hdbpath;`$string date;`BinanceKline1m);
+  partpath:.qi.path(hdbpath;`$string date;tname);
   .[.qi.path(partpath;`);();,;.Q.en[hdbpath;tbl]];
   .qi.info string[date]," ",string[count tbl]," rows";
   }
@@ -49,8 +50,8 @@
     tbl:.binance.fetchmonth[sym;interval;ym];
     if[not count tbl;:`date$()];
     dts:distinct(`date$tbl`time)except 0Nd;
-    {[hdbpath;tbl;dt].binance.writepart[hdbpath;dt;select from tbl where(`date$time)=dt]
-      }[hdbpath;tbl;] each dts;
+    {[hdbpath;interval;tbl;dt].binance.writepart[hdbpath;interval;dt;select from tbl where(`date$time)=dt]
+      }[hdbpath;interval;tbl;] each dts;
     dts
     }[sym;interval;hdbpath;] each distinct`month$start+til 1+end-start;
   }
@@ -58,11 +59,13 @@
 .binance.backfill:{[syms;start;end;interval;hdbpath]
   p:.qi.path hdbpath;
   dates:distinct raze .binance.backfillsym[;start;end;interval;p] each syms;
-  {t:.qi.path(x;y;`BinanceKline1m);if[.qi.exists t;`sym xasc t;@[t;`sym;`p#]]}[p;]each key[p] where key[p] like"[0-9]*";
+  tname:`$"BinanceKline",string interval;
+  {[p;tname;y]t:.qi.path(p;y;tname);if[.qi.exists t;`sym xasc t;@[t;`sym;`p#]]}[p;tname;]each key[p] where key[p] like"[0-9]*";
   .Q.chk p;
   if[.qi.isproc;
     $[null h:.ipc.conn hdb:.qi.tosym .proc.self.options`hdb;
       .qi.info"Could not connect to ",string[hdb]," to initiate reload";
       [.qi.info"Initiating reload on ",string hdb;h"reload[]"]]];
   .qi.info"Backfill complete";
+  tname
   }
