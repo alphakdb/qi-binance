@@ -35,10 +35,10 @@
 
 / Check if sym already exists in a partition date
 .binance.symexists:{[hdbpath;interval;date;sym]
-  p:.qi.path(hdbpath;`$string date;`$"BinanceKline",string interval;`sym);
+  p:.qi.path(hdbpath;date;"BinanceKline",string interval;`sym);
   s:.qi.path(hdbpath;`sym);
   if[not .qi.exists p;:0b];
-  sym in distinct get[s]get[p]
+  sym in distinct get[s]get p
   }
 
 / Write one day's rows to HDB partition
@@ -59,7 +59,7 @@
     alldts:("d"$ym)+til("d"$ym+1)-"d"$ym;
     / skip fetch if sym already present for every date in the full month
     if[all .binance.symexists[hdbpath;interval;;sym] each alldts;
-      .qi.info"Skipping ",(string sym)," ",(string ym),": already backfilled";
+      .qi.info"Skipping ",string[sym]," ",string[ym],": already backfilled";
       :alldts where alldts within(start;end)];
     tbl:.binance.fetchmonth[sym;interval;ym];
     if[not count tbl;:`date$()];
