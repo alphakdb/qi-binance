@@ -10,7 +10,7 @@
 .binance.parse:{[sym;lines]
   c:("JFFFFF FJ";",")0:lines;
   n:count c 0;
-  ms:$[1000000000000<first c 0;c[0]div 1000;c 0];  / normalise us->ms if needed
+  ms:c[0] div $[first[c 0]>1e16;1000000;first[c 0]>1e13;1000;1];  / ns->ms, us->ms, or ms
   times:1970.01.01D+1000000*ms;     / ms epoch -> q timestamp
   flip`time`sym`open`high`low`close`vwap`volume`feedtime`tptime!(times;n#sym;c 1;c 2;c 3;c 4;c[6]%c 5;c 5;n#.z.p;n#0Np)
   }
