@@ -33,12 +33,35 @@
   data
   }
 
-/ Check if sym already exists in a partition date
-.binance.symexists:{[hdbpath;interval;date;sym]
-  p:.qi.path(hdbpath;date;"BinanceKline",string interval;`sym);
+/ Persistent index of completed (sym;interval;date) — O(1) skip check
+.binance.IDXFILE:`binance_backfilled;
+
+.binance.rebuildidx:{[hdbpath]
+  .qi.info"Building binance backfill index from HDB (one-time)...";
+  empty:flip`sym`interval`date!"ssd"$\:();
   s:.qi.path(hdbpath;`sym);
-  if[not .qi.exists p;:0b];
-  sym in distinct get[s]get p
+  if[not .qi.exists s;.qi.path(hdbpath;.binance.IDXFILE)set empty;:empty];
+  symenum:get s;
+  dparts:`date$string each k where(k:key hdbpath)like"[0-9]*";
+  rows:raze{[hdbpath;symenum;dt]
+    tnames:k1 where(k1:key .qi.path(hdbpath;dt))like"BinanceKline*";
+    raze{[hdbpath;symenum;dt;tname]
+      p:.qi.path(hdbpath;dt;tname;`sym);
+      if[not .qi.exists p;:()];
+      syms:distinct symenum get p;
+      if[not count syms;:()];
+      ([]sym:syms;interval:count[syms]#`$12_string tname;date:count[syms]#dt) /MAYBE HACKY
+      }[hdbpath;symenum;dt;]each tnames
+    }[hdbpath;symenum;]each dparts;
+  idx:$[count rows;rows;empty];
+  (.qi.path(hdbpath;.binance.IDXFILE))set idx;
+  .qi.info"Index built: ",string[count idx]," entries";
+  idx
+  }
+
+.binance.loadidx:{[hdbpath]
+  p:.qi.path(hdbpath;.binance.IDXFILE);
+  $[.qi.exists p;get p;.binance.rebuildidx hdbpath]
   }
 
 / Write one day's rows to HDB partition
@@ -54,31 +77,30 @@
 / Backfill month by month, returns dates written
 .binance.backfillsym:{[sym;start;end;interval;hdbpath]
   .qi.info"Backfilling ",string[sym]," ",string[interval]," ",string[start]," to ",string end;
-  raze{[sym;interval;hdbpath;start;end;ym]
-    / all dates in this month
-    alldts:("d"$ym)+til("d"$ym+1)-"d"$ym;
-    / skip fetch if sym already present for every date in the full month
-    if[all .binance.symexists[hdbpath;interval;;sym] each alldts;
-      .qi.info"Skipping ",string[sym]," ",string[ym],": already backfilled";
-      :alldts where alldts within(start;end)];
+  .binance.IDX:.binance.loadidx hdbpath;
+  donedts:exec date from .binance.IDX where sym=sym,interval=interval;
+  missingmos:distinct`month$(start+til 1+end-start)except donedts;
+  if[not count missingmos;.qi.info"Already fully backfilled";:donedts where donedts within(start;end)];
+  raze{[sym;interval;hdbpath;start;end;donedts;ym]
     tbl:.binance.fetchmonth[sym;interval;ym];
     if[not count tbl;:`date$()];
-    dts:distinct(`date$tbl`time)except 0Nd;
-    / write all dates from zip where sym is missing (not just [start,end])
-    dts:dts except dts where .binance.symexists[hdbpath;interval;;sym] each dts;
-    {[hdbpath;interval;tbl;dt].binance.writepart[hdbpath;interval;dt;select from tbl where(`date$time)=dt]
+    dts:(distinct[`date$tbl`time]except 0Nd)except donedts;
+    {[hdbpath;interval;tbl;dt].binance.writepart[hdbpath;interval;dt;select from tbl where[`date$time]=dt]
       }[hdbpath;interval;tbl;] each dts;
-    / return only dates within requested range
+    if[count dts;
+      .binance.IDX,::(([]sym:count[dts]#sym;interval:count[dts]#interval;date:dts));
+      .qi.path(hdbpath;.binance.IDXFILE)set .binance.IDX];
     dts where dts within(start;end)
-    }[sym;interval;hdbpath;start;end;] each distinct`month$start+til 1+end-start;
+    }[sym;interval;hdbpath;start;end;donedts;] each missingmos;
   }
 
 .binance.backfill:{[syms;start;end;interval;hdbpath]
   p:.qi.path hdbpath;
   dates:distinct raze .binance.backfillsym[;start;end;interval;p] each syms;
-  tname:`$"BinanceKline",string interval;
-  {[p;tname;y]t:.qi.path(p;y;tname);if[.qi.exists t;`sym xasc t;@[t;`sym;`p#]]}[p;tname;]each key[p] where key[p] like"[0-9]*";
-  .Q.chk p;
+  tname:`$"BinanceKline",.qi.tostr interval;
+  if[count dates;
+    {[p;tname;y]t:.qi.path(p;y;tname);if[.qi.exists t;`sym xasc t;@[t;`sym;`p#]]}[p;tname;]each`$string dates;
+    .Q.chk p];
   if[.qi.isproc;
     $[null h:.ipc.conn hdb:.qi.tosym .proc.self.options`hdb;
       .qi.info"Could not connect to ",string[hdb]," to initiate reload";
