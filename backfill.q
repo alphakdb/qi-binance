@@ -90,26 +90,45 @@
   .qi.info string[date]," ",string[count tbl]," rows";
   }
 
-
-/ Backfill month by month, returns dates written
-.binance.backfillsym:{[sym;start;end;interval;hdbpath]
-  .qi.info"Backfilling ",string[sym]," ",string[interval]," ",string[start]," to ",string end;
+.binance.backfillsym:{[s;start;end;int;hdbpath]
+  .qi.info"Backfilling ",string[s]," ",string[int]," ",string[start]," to ",string end;
+  
+  / Load index and filter using renamed variables to avoid column shadowing
   .binance.IDX:.binance.loadidx hdbpath;
-  donedts:exec date from .binance.IDX where sym=sym,interval=interval;
-  missingmos:distinct`month$(start+til 1+end-start)except donedts;
-  if[not count missingmos;.qi.info"Already fully backfilled";:donedts where donedts within(start;end)];
-  raze{[sym;interval;hdbpath;start;end;donedts;ym]
-    tbl:.binance.fetchmonth[sym;interval;ym];
+  donedts:exec date from .binance.IDX where sym=s,interval=int;
+  
+  / Calculate missing months
+  all_dts:start+til 1+"i"$end-start;
+  missingmos:distinct `month$ all_dts except donedts;
+  
+  .qi.info"Found ",string[count donedts]," existing days. Months to fetch: ",string count missingmos;
+
+  if[not count missingmos;
+    .qi.info"Already fully backfilled";
+    :donedts where donedts within (start;end)
+  ];
+
+  raze {[s;int;hdbpath;start;end;donedts;ym]
+    tbl:.binance.fetchmonth[s;int;ym];
     if[not count tbl;:`date$()];
-    dts:(distinct[`date$tbl`time]except 0Nd)except donedts;
-    {[hdbpath;interval;tbl;dt].binance.writepart[hdbpath;interval;dt;select from tbl where[`date$time]=dt]
-      }[hdbpath;interval;tbl;] each dts;
+    
+    / Filter dates in this month not already in the index for this sym+int
+    dts:(distinct[`date$tbl`time] except 0Nd) except donedts;
+    
+    / Write partitions to disk
+    {[hdbpath;int;tbl;dt]
+      .binance.writepart[hdbpath;int;dt;select from tbl where (`date$time)=dt]
+    }[hdbpath;int;tbl;] each dts;
+    
+    / Update index and PERSIST (with path resolution safety)
     if[count dts;
-      .binance.IDX,::(([]sym:count[dts]#sym;interval:count[dts]#interval;date:dts));
-      (.qi.path(hdbpath;.binance.IDXFILE)) set .binance.IDX];
-    dts where dts within(start;end)
-    }[sym;interval;hdbpath;start;end;donedts;] each missingmos;
-  }
+      .binance.IDX,:([]sym:count[dts]#s;interval:count[dts]#int;date:dts);
+      (.qi.path(hdbpath;.binance.IDXFILE)) set .binance.IDX
+    ];
+    
+    dts where dts within (start;end)
+  }[s;int;hdbpath;start;end;donedts;] each missingmos
+ }
 
 .binance.backfill:{[syms;start;end;interval;hdbpath]
   p:.qi.path hdbpath;
