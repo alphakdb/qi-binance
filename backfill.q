@@ -37,27 +37,44 @@
 .binance.IDXFILE:`binance_backfilled;
 
 .binance.rebuildidx:{[hdbpath]
+  / 1. Force hdbpath to be a single hsym atom
+  hdbpath:hsym .qi.tosym hdbpath;
   .qi.info"Building binance backfill index from HDB (one-time)...";
+  
   empty:flip`sym`interval`date!"ssd"$\:();
+  idxFile:.qi.path(hdbpath;.binance.IDXFILE);
+  
+  / 2. Ensure the directory actually exists on disk
+  if[not .qi.exists hdbpath;.qi.os.ensuredir hdbpath];
+
   s:.qi.path(hdbpath;`sym);
-  if[not .qi.exists s;.qi.path(hdbpath;.binance.IDXFILE)set empty;:empty];
+  / If no sym file, it's a fresh HDB
+  if[not .qi.exists s;idxFile set empty;:empty];
+  
   symenum:get s;
-  dparts:`date$string each k where(k:key hdbpath)like"[0-9]*";
+  k:key hdbpath;
+  dparts:k where k like "[0-9]*";
+  
+  / 3. If no partitions found, save empty index and exit
+  if[not count dparts;idxFile set empty;:empty];
+
   rows:raze{[hdbpath;symenum;dt]
-    tnames:k1 where(k1:key .qi.path(hdbpath;dt))like"BinanceKline*";
+    targetDir:.qi.path(hdbpath;dt);
+    tnames:k1 where(k1:key targetDir) like "BinanceKline*";
     raze{[hdbpath;symenum;dt;tname]
       p:.qi.path(hdbpath;dt;tname;`sym);
       if[not .qi.exists p;:()];
       syms:distinct symenum get p;
       if[not count syms;:()];
-      ([]sym:syms;interval:count[syms]#`$12_string tname;date:count[syms]#dt) /MAYBE HACKY
-      }[hdbpath;symenum;dt;]each tnames
-    }[hdbpath;symenum;]each dparts;
+      ([]sym:syms;interval:count[syms]#`$12_string tname;date:count[syms]#`date$string dt)
+    }[hdbpath;symenum;dt;] each tnames
+  }[hdbpath;symenum;] each dparts;
+  
   idx:$[count rows;rows;empty];
-  (.qi.path(hdbpath;.binance.IDXFILE))set idx;
+  idxFile set idx;
   .qi.info"Index built: ",string[count idx]," entries";
   idx
-  }
+ }
 
 .binance.loadidx:{[hdbpath]
   p:.qi.path(hdbpath;.binance.IDXFILE);
@@ -89,7 +106,7 @@
       }[hdbpath;interval;tbl;] each dts;
     if[count dts;
       .binance.IDX,::(([]sym:count[dts]#sym;interval:count[dts]#interval;date:dts));
-      .qi.path(hdbpath;.binance.IDXFILE)set .binance.IDX];
+      (.qi.path(hdbpath;.binance.IDXFILE)) set .binance.IDX];
     dts where dts within(start;end)
     }[sym;interval;hdbpath;start;end;donedts;] each missingmos;
   }
