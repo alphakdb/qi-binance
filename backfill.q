@@ -1,4 +1,5 @@
 .binance.BASEURL:"https://data.binance.vision/data/spot/monthly/klines/"
+.binance.DAILYURL:"https://data.binance.vision/data/spot/daily/klines/"
 
 .binance.hdb_dir:{
   $[.qi.isproc;
@@ -13,6 +14,25 @@
   ms:c[0] div $[first[c 0]>1e16;1000000;first[c 0]>1e13;1000;1];  / ns->ms, us->ms, or ms
   times:1970.01.01D+1000000*ms;     / ms epoch -> q timestamp
   flip`time`sym`open`high`low`close`vwap`volume`feedtime`tptime!(times;n#sym;c 1;c 2;c 3;c 4;c[6]%c 5;c 5;n#.z.p;n#0Np)
+  }
+
+/ Download and parse one daily zip, returns table
+.binance.fetchday:{[sym;interval;dt]
+  ds:"-"sv"."vs string dt;
+  fname:("-"sv(string sym;string interval;ds)),".zip";
+  url:.binance.DAILYURL,string[sym],"/",string[interval],"/",fname;
+  .qi.info"Fetching ",url;
+  tmp:.qi.local`tmp;
+  .qi.os.ensuredir tmp;
+  zip:.qi.path(tmp;`$fname);
+  @[system;"curl -L -s --max-time 60 -o ",.qi.ospath[zip]," ",url;{[u;e].qi.error"Failed to fetch ",u,": ",e}[url;]];
+  $[.qi.WIN;
+    [system"powershell -NoProfile -Command \"Expand-Archive -Path '",.qi.ospath[zip],"' -DestinationPath '",.qi.ospath[tmp],"' -Force\"";
+     lines:get .qi.path(tmp;`$(-4_fname),".csv")];
+    lines:system"unzip -p ",.qi.spath zip];
+  data:.binance.parse[sym;lines];
+  .qi.deldir tmp;
+  data
   }
 
 / Download and parse one monthly zip, returns table
@@ -109,23 +129,30 @@
   ];
 
   raze {[s;int;hdbpath;start;end;donedts;ym]
-    tbl:.binance.fetchmonth[s;int;ym];
+    / Use daily zips for the current (incomplete) month, monthly zip otherwise
+    tbl:$[ym=`month$.z.d;
+      [startdt:`date$ym;enddt:`date$ym+1;daydts:startdt+til`long$enddt-startdt;
+       daydts:daydts where (daydts within(start;end))&daydts<.z.d;
+       daydts:daydts except donedts;
+       if[not count daydts;:`date$()];
+       raze .binance.fetchday[s;int;] each daydts];
+      .binance.fetchmonth[s;int;ym]];
     if[not count tbl;:`date$()];
-    
+
     / Filter dates in this month not already in the index for this sym+int
     dts:(distinct[`date$tbl`time] except 0Nd) except donedts;
-    
+
     / Write partitions to disk
     {[hdbpath;int;tbl;dt]
       .binance.writepart[hdbpath;int;dt;select from tbl where (`date$time)=dt]
     }[hdbpath;int;tbl;] each dts;
-    
+
     / Update index and PERSIST (with path resolution safety)
     if[count dts;
       .binance.IDX,:([]sym:count[dts]#s;interval:count[dts]#int;date:dts);
       (.qi.path(hdbpath;.binance.IDXFILE)) set .binance.IDX
     ];
-    
+
     dts where dts within (start;end)
   }[s;int;hdbpath;start;end;donedts;] each missingmos
  }
